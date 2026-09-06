@@ -262,6 +262,9 @@ td small {
   max-height: 300px;
   overflow: auto;
 }
+#catalogRows.master-table td { min-width: 140px; max-width: 360px; }
+#catalogRows.master-table th { min-width: 140px; }
+#catalogRows.master-table td:nth-child(2), #catalogRows.master-table td:nth-child(4), #catalogRows.master-table td:nth-child(13) { min-width: 300px; }
 #productResults button {
   text-align: left;
   background: #edf5f5;

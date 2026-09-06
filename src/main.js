@@ -19,6 +19,7 @@ import {
   downloadPrevious,
 } from "./exports.js";
 import { exportKinds } from "./export-model.js";
+import { masterProduct, masterPriceColumns } from "./master-catalog.js";
 const db = createClient(
   "https://qfwvlhzvgbqmcajdmczj.supabase.co",
   "sb_publishable_j7NC2Zo47BrPQC2SfdGYuA_k3XSqQVX",
@@ -204,7 +205,7 @@ function orderList() {
     .querySelectorAll("[data-open]")
     .forEach((b) => (b.onclick = () => run(() => openHistory(b.dataset.open))));
 }
-async function openHistory(id) {
+async function openHistory(id, trash = false) {
   const revisions = await query(
     db
       .from("revisiones_operacion")
@@ -213,8 +214,29 @@ async function openHistory(id) {
       .order("numero_revision", { ascending: false }),
   );
   const latest = orders.find((o) => o.id === id);
-  dialog.innerHTML = `<h2>${e(latest.folio)}</h2><p>Cada versión conserva los datos que tenía al guardarse.</p>${revisions.map((r) => `<article class="revision"><div><b>Versión ${r.numero_revision}</b><small>${e(new Date(r.created_at).toLocaleString("es-MX"))} · ${e(r.motivo || "Guardado de operación")}</small></div><button data-rev="${r.id}">Abrir versión</button></article>`).join("")}<button id="closeDialog" class="quiet">Cerrar</button>`;
-  dialog.showModal();
+  const visible = revisions.filter((r) => Boolean(r.eliminada_at) === trash);
+  dialog.innerHTML = `<h2>${e(latest.folio)}${trash ? " · Papelera" : ""}</h2><p>${trash ? "Puedes restaurar las versiones eliminadas y sus archivos." : "Eliminar una versión la envía a la papelera. Las otras versiones no cambian."}</p>${visible.map((r) => `<article class="revision"><div><b>Versión ${r.numero_revision}</b><small>${e(new Date(r.created_at).toLocaleString("es-MX"))} · ${e(r.motivo || "Guardado de operación")}</small></div><div class="actions">${trash ? "" : `<button data-rev="${r.id}">Abrir versión</button>`}<button class="quiet" data-trash="${r.id}">${trash ? "Restaurar" : "Eliminar versión"}</button></div></article>`).join("")}${!visible.length ? "<p>No hay versiones en esta vista.</p>" : ""}<div class="actions"><button id="toggleTrash" class="quiet">${trash ? "Volver al historial" : `Ver papelera (${revisions.filter((r) => r.eliminada_at).length})`}</button><button id="closeDialog" class="quiet">Cerrar</button></div><p id="historyError" role="status"></p>`;
+  if (!dialog.open) dialog.showModal();
+  document.querySelector("#toggleTrash").onclick = () =>
+    run(() => openHistory(id, !trash));
+  dialog.querySelectorAll("[data-trash]").forEach(
+    (b) =>
+      (b.onclick = async () => {
+        b.disabled = true;
+        try {
+          await query(
+            db.rpc("papelera_revision", {
+              revision_id: b.dataset.trash,
+              eliminar: !trash,
+            }),
+          );
+          await openHistory(id, trash);
+        } catch (error) {
+          document.querySelector("#historyError").textContent = error.message;
+          b.disabled = false;
+        }
+      }),
+  );
   document.querySelector("#closeDialog").onclick = () => dialog.close();
   dialog.querySelectorAll("[data-rev]").forEach(
     (b) =>
@@ -284,7 +306,7 @@ function renderOrder() {
         if (incompatible.length) {
           ev.target.value = old;
           notify(
-            `No se cambió la selección: ${incompatible.map((l) => l.codigo).join(", ")} no tienen precios y datos completos para esa combinación. Quita esas partidas o completa el catálogo primero.`,
+            `No se cambió la selección: ${incompatible.map((l) => l.codigo).join(", ")} ya no están activos en el catálogo.`,
           );
           return;
         }
@@ -358,6 +380,7 @@ function renderOrder() {
   document.querySelector("#previousExports").onclick = () =>
     run(showExportHistory);
   document.querySelector("#productSearch").oninput = searchProducts;
+  document.querySelector("#productSearch").onfocus = searchProducts;
   document.querySelectorAll("[data-kind]").forEach(
     (b) =>
       (b.onclick = () => {
@@ -372,6 +395,7 @@ function renderOrder() {
   showAddress();
   showLines();
   showHeaders();
+  searchProducts();
 }
 function showAddress() {
   const a = catalogs.domicilios_empresa.find(
@@ -391,23 +415,21 @@ function searchProducts() {
     .querySelector("#productSearch")
     .value.toLowerCase()
     .trim();
-  const results = text
-    ? catalogs.productos
-        .filter(
-          (p) =>
-            availableProduct(p, order, catalogs) &&
-            [
-              p.codigo,
-              p.descripcion_compra,
-              p.descripcion_venta,
-              p.descripcion_mexico,
-            ]
-              .join(" ")
-              .toLowerCase()
-              .includes(text),
-        )
-        .slice(0, 15)
-    : [];
+  const results = catalogs.productos
+    .filter(
+      (p) =>
+        availableProduct(p, order, catalogs) &&
+        [
+          p.codigo,
+          p.descripcion_compra,
+          p.descripcion_venta,
+          p.descripcion_mexico,
+        ]
+          .join(" ")
+          .toLowerCase()
+          .includes(text),
+    )
+    .slice(0, 30);
   document.querySelector("#productResults").innerHTML = results.length
     ? results
         .map(
@@ -416,7 +438,7 @@ function searchProducts() {
         )
         .join("")
     : text
-      ? '<p class="hint">No hay coincidencias con precio de compra para este proveedor, precio de venta para este cliente, unidad y peso completos en la fecha de la orden. Puedes completar los datos en Catálogos.</p>'
+      ? '<p class="hint">No hay productos activos con ese código o descripción.</p>'
       : "";
   document
     .querySelectorAll("[data-product]")
@@ -429,16 +451,8 @@ function addProduct(id) {
   }
   const p = catalogs.productos.find((x) => x.id === id);
   if (!availableProduct(p, order, catalogs)) {
-    notify(
-      "Este producto no tiene todos los datos y precios disponibles para la selección actual.",
-    );
+    notify("Este producto ya no está activo en el catálogo.");
     searchProducts();
-    return;
-  }
-  if (p.unidad_compra_id !== p.unidad_venta_id) {
-    notify(
-      "Este producto tiene unidades de compra y venta distintas. Hace falta definir su conversión antes de usarlo.",
-    );
     return;
   }
   const buy = currentPrice(
@@ -457,7 +471,7 @@ function addProduct(id) {
       vendedor_id: order.empresa_usa_id,
       cliente_id: order.cliente_id,
       producto_id: id,
-      unidad_id: p.unidad_venta_id,
+      unidad_id: p.unidad_compra_id,
       moneda: order.moneda_venta,
     },
     order.fecha,
@@ -536,7 +550,7 @@ function priceCriteria(line, key) {
         vendedor_id: order.empresa_usa_id,
         cliente_id: order.cliente_id,
         producto_id: line.producto_id,
-        unidad_id: p?.unidad_venta_id,
+        unidad_id: p?.unidad_compra_id,
         moneda: order.moneda_venta,
       };
 }
@@ -771,14 +785,23 @@ const definitions = {
   ],
   productos: [
     ["codigo", "Código"],
-    ["descripcion_compra", "Descripción de compra"],
-    ["descripcion_venta", "Descripción de venta"],
-    ["descripcion_mexico", "Descripción en México"],
-    ["unidad_compra_id", "Unidad de compra", "unidades"],
-    ["unidad_venta_id", "Unidad de venta", "unidades"],
-    ["unidad_mexico_id", "Unidad en México", "unidades"],
-    ["peso_unitario_kg", "Peso por unidad de compra (kg)", "number"],
-    ["factor_conversion", "Factor de conversión", "number"],
+    ["descripcion_mexico", "Descripción para recepción y facturas en México"],
+    ["unidad_mexico_id", "UOM · México", "unidades"],
+    ["descripcion_compra", "Descripción para órdenes de compra"],
+    ["peso_unitario_kg", "KGS por unidad de compra", "number"],
+    ["unidad_compra_id", "UOM · Compra", "unidades"],
+    masterPriceColumns[0],
+    ["factor_conversion", "Factor de unidad", "number"],
+    ["precio_heq_kimix", "Precio VTA HEQ a KIMIX", "number"],
+    ["factor_columna_115", "Columna «1.15» · valor por producto", "number"],
+    ["precio_kimix_pha", "Precio VTA KIMIX a PHA", "number"],
+    masterPriceColumns[1],
+    [
+      "descripcion_venta",
+      "Descripción para Invoices de PHA Industrial Supplies",
+    ],
+    masterPriceColumns[2],
+    ["unidad_venta_id", "UOM · Venta a HEQ", "unidades"],
     ["activo", "Activo", "boolean"],
   ],
   precios_compra: [
@@ -814,13 +837,29 @@ function renderCatalogs() {
   );
   document.querySelector("#addCatalog").onclick = () => editCatalog({});
   document.querySelector("#catalogSearch").oninput = catalogRows;
+  document
+    .querySelector("#catalogRows")
+    .classList.toggle("master-table", catalogTable === "productos");
+  if (catalogTable === "productos")
+    document
+      .querySelector("#catalogSearch")
+      .insertAdjacentHTML(
+        "beforebegin",
+        '<p class="hint">Se muestran todas las columnas del Master. Desliza la tabla hacia la derecha. AOCHEN y HUANTENG se editan en Precios de compra; la venta a HEQ, en Precios de venta. Los campos vacíos se pueden completar después.</p>',
+      );
   catalogRows();
 }
 function catalogRows() {
   const search = document.querySelector("#catalogSearch").value.toLowerCase();
-  const cols = definitions[catalogTable];
+  const cols =
+    catalogTable === "productos"
+      ? definitions.productos
+      : definitions[catalogTable].slice(0, 5);
   const rows = catalogs[catalogTable]
-    .map((r, i) => ({ r, i }))
+    .map((r, i) => ({
+      r: catalogTable === "productos" ? masterProduct(r, catalogs, today()) : r,
+      i,
+    }))
     .filter(({ r }) =>
       cols
         .map(([k, , type]) =>
@@ -831,14 +870,12 @@ function catalogRows() {
         .includes(search),
     );
   document.querySelector("#catalogRows").innerHTML = `<table><thead><tr>${cols
-    .slice(0, 5)
     .map(([, t]) => `<th>${e(t)}</th>`)
     .join("")}<th></th></tr></thead><tbody>${rows
     .slice(0, 150)
     .map(
       ({ r, i }) =>
         `<tr>${cols
-          .slice(0, 5)
           .map(
             ([k, , type]) =>
               `<td>${e(tables.includes(type) ? label(type, r[k]) : typeof r[k] === "boolean" ? (r[k] ? "Sí" : "No") : r[k])}</td>`,
@@ -859,6 +896,7 @@ function catalogRows() {
     );
 }
 function editCatalog(row) {
+  if (catalogTable === "productos") row = masterProduct(row, catalogs, today());
   const cols = definitions[catalogTable];
   dialog.innerHTML = `<form id="catalogForm"><h2>${row.id || row.empresa_id ? "Editar" : "Agregar"} · ${names[catalogTable]}</h2><div class="grid">${cols
     .map(([k, t, type]) =>
@@ -883,13 +921,21 @@ function editCatalog(row) {
                     `<option value="${v}" ${row.rol === v ? "selected" : ""}>${t}</option>`,
                 )
                 .join("")}</select></label>`
-            : field(
-                k,
-                t,
-                row[k] ?? "",
-                type || "text",
-                type === "number" ? 'step="any" min="0"' : "",
-              ),
+            : type === "master_price"
+              ? field(
+                  k,
+                  t + " · USD (editar en Precios)",
+                  row[k] ?? "",
+                  "number",
+                  "readonly",
+                )
+              : field(
+                  k,
+                  t,
+                  row[k] ?? "",
+                  type || "text",
+                  type === "number" ? 'step="any" min="0"' : "",
+                ),
     )
     .join(
       "",
@@ -903,10 +949,12 @@ function editCatalog(row) {
     try {
       const f = new FormData(ev.target);
       const values = Object.fromEntries(
-        cols.map(([k, , type]) => [
-          k,
-          type === "boolean" ? f.has(k) : f.get(k) || null,
-        ]),
+        cols
+          .filter(([, , type]) => type !== "master_price")
+          .map(([k, , type]) => [
+            k,
+            type === "boolean" ? f.has(k) : f.get(k) || null,
+          ]),
       );
       let q;
       if (row.id) q = db.from(catalogTable).update(values).eq("id", row.id);

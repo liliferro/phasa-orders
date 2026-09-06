@@ -38,10 +38,14 @@ export async function exportRevision(
   const revision = await result(
     db
       .from("revisiones_operacion")
-      .select("id,datos,plantilla_id")
+      .select("id,datos,plantilla_id,eliminada_at")
       .eq("id", revisionId)
       .single(),
   );
+  if (revision.eliminada_at)
+    throw Error(
+      "Esta versión está en la papelera. Restáurala para volver a exportarla.",
+    );
   if (!templates.has(revision.plantilla_id)) {
     const rows = await result(
       db
@@ -68,16 +72,14 @@ export async function exportRevision(
   const name = `${kinds.length === 1 ? exportNames[kinds[0]] : "Flujo completo"}_${folio}_v${revision.datos.operacion.revision}.${format}`;
   const path = `${id}/${name}`;
   await result(
-    db
-      .from("exportaciones")
-      .insert({
-        id,
-        revision_operacion_id: revisionId,
-        formato: format,
-        documentos: kinds,
-        ruta_storage: path,
-        nombre_archivo: name,
-      }),
+    db.from("exportaciones").insert({
+      id,
+      revision_operacion_id: revisionId,
+      formato: format,
+      documentos: kinds,
+      ruta_storage: path,
+      nombre_archivo: name,
+    }),
   );
   try {
     status(`Generando ${format.toUpperCase()} con el formato original…`);

@@ -38,6 +38,13 @@ begin
  if cnt<>8 then raise exception 'Expected 8 historical document versions, got %',cnt; end if;
  if (select (datos->'partidas'->0->>'importe_venta')::numeric from public.revisiones_operacion where id=(first_save->>'revision_id')::uuid)<>16000 then raise exception 'History changed'; end if;
  if (select (datos->'partidas'->0->>'importe_venta')::numeric from public.revisiones_operacion where id=(second_save->>'revision_id')::uuid)<>8000 then raise exception 'New totals incorrect'; end if;
+ perform public.papelera_revision((first_save->>'revision_id')::uuid,true);
+ if (select eliminada_at is null from public.revisiones_operacion where id=(first_save->>'revision_id')::uuid) then raise exception 'Trash failed'; end if;
+ if (select count(*) from public.versiones_documento where revision_operacion_id=(first_save->>'revision_id')::uuid)<>4 then raise exception 'Trash lost documents'; end if;
+ if (select count(*) from public.exportaciones where revision_operacion_id=(first_save->>'revision_id')::uuid)<>1 then raise exception 'Trash lost exports'; end if;
+ perform public.papelera_revision((first_save->>'revision_id')::uuid,false);
+ if (select eliminada_at is not null from public.revisiones_operacion where id=(first_save->>'revision_id')::uuid) then raise exception 'Restore failed'; end if;
+ if (select (datos->'partidas'->0->>'importe_venta')::numeric from public.revisiones_operacion where id=(first_save->>'revision_id')::uuid)<>16000 then raise exception 'Restore changed snapshot'; end if;
  begin
  perform public.guardar_operacion(payload || jsonb_build_object('clave_guardado',gen_random_uuid()));
  raise exception 'Stale revision accepted';
@@ -52,6 +59,10 @@ select set_config('request.jwt.claim.sub','22222222-2222-4222-8222-222222222222'
 set local role authenticated;
 do $test$ begin
  if public.acceso_permitido() then raise exception 'Unauthorized owner accepted'; end if;
+ begin
+ perform public.papelera_revision(gen_random_uuid(),true);
+ raise exception 'Unauthorized trash accepted';
+ exception when insufficient_privilege then null; end;
  if exists(select 1 from public.purchase_orders) then raise exception 'Unauthorized history read'; end if;
  if exists(select 1 from public.recursos_plantilla) then raise exception 'Unauthorized template read'; end if;
  if exists(select 1 from public.exportaciones) then raise exception 'Unauthorized export read'; end if;

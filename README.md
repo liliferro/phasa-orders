@@ -13,6 +13,9 @@ Aplicación de operaciones de importación. Primera etapa publicada: https://pha
 - Explicación de precios ausentes por empresa, unidad, moneda o vigencia; recarga explícita desde catálogo sin sustituir precios de otro cliente o proveedor.
 - Idempotencia de guardado, detección de ediciones concurrentes y acceso de lectura exclusivo al historial.
 - Descargas individuales PDF/Excel, PDF combinado, Excel con cuatro hojas y ZIP con cuatro PDF. Plantillas originales privadas, logos, colores, columnas, fórmulas y paginación de partidas. Archivos privados asociados a la revisión y su plantilla; descarga de archivos anteriores sin sobrescribirlos.
+- Papelera de versiones con eliminación recuperable y restauración. No modifica las instantáneas, los archivos ni el contador de revisiones.
+- Todos los productos activos están disponibles en la búsqueda, incluso sin precios, peso o unidades completos. El precio se consulta exclusivamente para la empresa, unidad, moneda y fecha seleccionadas; los faltantes permanecen vacíos.
+- Vista completa del catálogo con las columnas del Master: descripciones, tres unidades, KGS, factor de unidad, AOCHEN, HUANTENG, venta a HEQ e importes HEQ/KIMIX/PHA. Los tres últimos campos adicionales se importan como valores de origen; no se infieren nuevas reglas de cálculo comercial.
 
 ## Pendiente antes de entrega completa
 
