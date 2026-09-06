@@ -9,13 +9,14 @@ Aplicación de operaciones de importación. Primera etapa publicada: https://pha
 - Captura de Purchase Order con búsqueda por código o descripción, precios disponibles y peso.
 - Guardado transaccional de la operación, partidas, revisión completa y cuatro versiones documentales.
 - Edición de encabezados y cantidades/precios compartidos; consulta y edición desde revisiones anteriores.
+- Vista automática de las cuatro pestañas con sus propias columnas, partes comerciales, importes y pesos. Referencias de Invoice y folio/fecha/referencia de Packing List derivados de sus documentos origen.
+- Explicación de precios ausentes por empresa, unidad, moneda o vigencia; recarga explícita desde catálogo sin sustituir precios de otro cliente o proveedor.
 - Idempotencia de guardado, detección de ediciones concurrentes y acceso de lectura exclusivo al historial.
 
 ## Pendiente antes de entrega completa
 
 - Exportación PDF y XLSX individual y masiva, reproducción y revisión visual de cada plantilla original, almacenamiento privado de archivos y versiones de plantillas.
-- Prueba completa de la interfaz con la sesión real del usuario. No se ha solicitado ni almacenado su contraseña.
-- Edición de descripciones de partidas y presentación de columnas específica por documento.
+- Edición de descripciones de partidas y exportación con reproducción exacta del formato original.
 - Folios automáticos, valores predeterminados comerciales y redondeo definitivo requieren reglas pendientes del negocio. Las órdenes se guardan como borradores; los importes usan provisionalmente precio de seis decimales y redondeo de cada partida a dos.
 - Recepción, distribución y facturación posterior quedan fuera de esta primera etapa.
 
