@@ -1,5 +1,6 @@
 import Decimal from "decimal.js";
 import { escapeHTML as e, total } from "./domain.js";
+import { isEnglishDocument } from "./document-language.js";
 export const documentColumns = {
   purchase_order: [
     ["codigo", "CODE"],
@@ -116,6 +117,7 @@ export function priceExplanation(prices, criteria, date, companies) {
   return `Sin precio para ${criteria.proveedor_id ? "este proveedor" : "este cliente"}, unidad y moneda.${names.length ? ` El catálogo tiene precios para: ${names.join("; ")}.` : " Registra el precio en el catálogo o captura un precio acordado en esta orden."}`;
 }
 export function documentHTML(order, kind, catalogs) {
+  const english = isEnglishDocument(kind);
   const saved = order._snapshot;
   const find = (id) => catalogs.empresas.find((c) => c.id === id) || {};
   const usa = saved?.empresa_usa || find(order.empresa_usa_id),
@@ -136,7 +138,7 @@ export function documentHTML(order, kind, catalogs) {
   const h = resolvedHeaders(order)[kind],
     cols = documentColumns[kind];
   const block = (title, company, a) =>
-    `<div><small>${e(title)}</small><b>${e(company.razon_social || "Por seleccionar")}</b><span>${e([a.direccion, a.ciudad, a.estado, a.codigo_postal, a.pais].filter(Boolean).join(", "))}</span><span>${e([company.telefono, company.email, company.identificacion_fiscal].filter(Boolean).join(" · "))}</span></div>`;
+    `<div><small>${e(title)}</small><b>${e(company.razon_social || (english ? "Not selected" : "Por seleccionar"))}</b><span>${e([a.direccion, a.ciudad, a.estado, a.codigo_postal, a.pais].filter(Boolean).join(", "))}</span><span>${e([company.telefono, company.email, company.identificacion_fiscal].filter(Boolean).join(" · "))}</span></div>`;
   const parties =
     kind === "purchase_order"
       ? block("SUPPLIER", supplier, supplierAddress) +
@@ -165,16 +167,18 @@ export function documentHTML(order, kind, catalogs) {
     (l) => missing(l[priceKey]) || missing(l.cantidad),
   );
   const sum = incomplete
-    ? "Incompleto: faltan datos"
+    ? english
+      ? "Incomplete: missing data"
+      : "Incompleto: faltan datos"
     : total(order.partidas, priceKey) +
       (kind === "packing_list"
         ? " kg"
         : ` ${kind === "purchase_order" ? order.moneda_compra : order.moneda_venta}`);
-  return `<article class="document-preview"><div class="document-title"><div><b>${e((kind === "orden_compra_mexico" ? client : usa).razon_social || "")}</b><h2>${titles[kind]}</h2></div><span>NO. <b>${e(h.folio || "Pendiente de capturar")}</b><br>DATE ${e(h.fecha || "")}</span></div><div class="document-parties">${parties}</div><div class="document-meta">${[
+  return `<article class="document-preview"><div class="document-title"><div><b>${e((kind === "orden_compra_mexico" ? client : usa).razon_social || "")}</b><h2>${titles[kind]}</h2></div><span>NO. <b>${e(h.folio || (english ? "Not entered" : "Pendiente de capturar"))}</b><br>DATE ${e(h.fecha || "")}</span></div><div class="document-parties">${parties}</div><div class="document-meta">${[
     ["TERMS", h.condiciones_pago],
     ["INCOTERM", h.incoterm],
     ["SHIP VIA", h.via_transporte],
-    ["PUERTO", h.puerto_entrada],
+    [english ? "PORT OF ENTRY" : "PUERTO", h.puerto_entrada],
     ["REFERENCE", h.referencia_cliente],
     ["SUPPLIER REF.", h.referencia_proveedor],
     ["INVOICE NUM", h.invoice_num],
@@ -183,5 +187,5 @@ export function documentHTML(order, kind, catalogs) {
     .map(([k, v]) => `<span><small>${k}</small>${e(v)}</span>`)
     .join(
       "",
-    )}</div><div class="table-scroll"><table><thead><tr>${cols.map(([, label]) => `<th>${label}</th>`).join("")}</tr></thead><tbody>${lines.map((l) => `<tr>${cols.map(([key]) => `<td>${missing(l[key]) ? "<em>Falta dato</em>" : e(l[key])}</td>`).join("")}</tr>`).join("")}</tbody></table></div><div class="document-total">TOTAL <b>${e(sum)}</b></div>${h.observaciones ? `<p>${e(h.observaciones)}</p>` : ""}</article>`;
+    )}</div><div class="table-scroll"><table><thead><tr>${cols.map(([, label]) => `<th>${label}</th>`).join("")}</tr></thead><tbody>${lines.map((l) => `<tr>${cols.map(([key]) => `<td>${missing(l[key]) ? (english ? "<em>Missing data</em>" : "<em>Falta dato</em>") : e(l[key])}</td>`).join("")}</tr>`).join("")}</tbody></table></div><div class="document-total">TOTAL <b>${e(sum)}</b></div>${h.observaciones ? `<p>${e(h.observaciones)}</p>` : ""}</article>`;
 }

@@ -2,6 +2,7 @@ import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
 import ExcelJS from "exceljs";
 import JSZip from "jszip";
+import { pageSummary } from "./document-language.js";
 export const decodeBase64 = (s) =>
   Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
 const hex = (s) => {
@@ -259,9 +260,7 @@ export async function renderPdf(pages, resources) {
     }
     const footer = await pdf.embedFont(StandardFonts.Helvetica);
     let note =
-      p.pageCount > 1
-        ? `${p.name} - ${p.folio} - Pagina ${p.pageIndex + 1} de ${p.pageCount} | Total documento: ${p.grandTotal.toFixed(2)} ${p.currency}`
-        : "";
+      p.pageCount > 1 ? `${p.name} - ${p.folio} - ${pageSummary(p)}` : "";
     if (p.notes) note += (note ? " | " : "") + p.notes;
     const noteLines = wrapText(note, footer, 7, 560);
     if (noteLines.length > 4)
@@ -371,9 +370,7 @@ export async function renderExcel(pages) {
         ws.mergeCells(footerRow, 1, footerRow, p.cols);
         ws.getCell(footerRow, 1).value = [
           p.notes,
-          p.pageCount > 1
-            ? `Página ${p.pageIndex + 1} de ${p.pageCount}. Total documento: ${p.grandTotal.toFixed(2)} ${p.currency}`
-            : "",
+          p.pageCount > 1 ? pageSummary(p) : "",
         ]
           .filter(Boolean)
           .join(" | ");

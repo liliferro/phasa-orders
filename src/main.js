@@ -20,6 +20,7 @@ import {
 } from "./exports.js";
 import { exportKinds } from "./export-model.js";
 import { masterProduct, masterPriceColumns } from "./master-catalog.js";
+import { isEnglishDocument, documentFieldLabel } from "./document-language.js";
 const db = createClient(
   "https://qfwvlhzvgbqmcajdmczj.supabase.co",
   "sb_publishable_j7NC2Zo47BrPQC2SfdGYuA_k3XSqQVX",
@@ -276,7 +277,7 @@ function renderOrder() {
       )
       .join(
         "",
-      )}</div><p>Estos campos pertenecen al documento seleccionado. Las cantidades y precios se editan arriba.</p><div class="grid" id="headers"></div><div id="documentPreview"></div></section><section>${field("motivo", "Motivo del cambio (opcional)", order.motivo || "")}<p class="hint">Revisa los folios y las condiciones comerciales antes de descargar. Cada cambio guardado conserva la versión anterior.</p></section></form>`,
+      )}</div><p id="documentHelp">Estos campos pertenecen al documento seleccionado. Las cantidades y precios se editan arriba.</p><div class="grid" id="headers"></div><div id="documentPreview"></div></section><section>${field("motivo", "Motivo del cambio (opcional)", order.motivo || "")}<p class="hint">Revisa los folios y las condiciones comerciales antes de descargar. Cada cambio guardado conserva la versión anterior.</p></section></form>`,
   );
   const form = document.querySelector("#orderForm");
   form.onchange = (ev) => {
@@ -588,6 +589,10 @@ function reprice() {
   showLines();
 }
 function showHeaders() {
+  const english = isEnglishDocument(selectedKind);
+  document.querySelector("#documentHelp").textContent = english
+    ? "Enter terms and notes in English. Edit shared quantities and prices in the Products section above."
+    : "Estos campos pertenecen al documento seleccionado. Las cantidades y precios se editan arriba.";
   const values = resolvedHeaders(order)[selectedKind];
   const automatic = {
     purchase_order: ["folio", "fecha"],
@@ -638,7 +643,12 @@ function showHeaders() {
     .map(([k, t, type]) =>
       field(
         k,
-        t + (automatic.includes(k) ? " · automático" : ""),
+        documentFieldLabel(selectedKind, k, t) +
+          (automatic.includes(k)
+            ? english
+              ? " · automatic"
+              : " · automático"
+            : ""),
         values[k] || "",
         type || "text",
         automatic.includes(k) ? "readonly" : "",
