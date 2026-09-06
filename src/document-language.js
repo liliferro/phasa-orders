@@ -1,10 +1,14 @@
 export const isEnglishDocument = (kind) =>
-  ["invoice", "packing_list"].includes(kind);
+  ["purchase_order", "invoice", "packing_list"].includes(kind);
 export function documentFieldLabel(kind, key, fallback) {
   if (!isEnglishDocument(kind)) return fallback;
   return (
     {
-      folio: kind === "invoice" ? "Invoice No." : "Packing List No.",
+      folio: {
+        purchase_order: "Purchase Order No.",
+        invoice: "Invoice No.",
+        packing_list: "Packing List No.",
+      }[kind],
       fecha: kind === "invoice" ? "Invoice Date" : "Date",
       condiciones_pago: "Terms",
       incoterm: "Incoterm",
