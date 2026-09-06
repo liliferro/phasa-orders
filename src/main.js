@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { availableProduct } from "./availability.js";
 import {
   escapeHTML as e,
   kinds,
@@ -264,6 +265,22 @@ function renderOrder() {
         ].includes(k) &&
         order.partidas.length
       ) {
+        const proposed = { ...order, [k]: ev.target.value };
+        const incompatible = order.partidas.filter(
+          (l) =>
+            !availableProduct(
+              catalogs.productos.find((p) => p.id === l.producto_id),
+              proposed,
+              catalogs,
+            ),
+        );
+        if (incompatible.length) {
+          ev.target.value = old;
+          notify(
+            `No se cambió la selección: ${incompatible.map((l) => l.codigo).join(", ")} no tienen precios y datos completos para esa combinación. Quita esas partidas o completa el catálogo primero.`,
+          );
+          return;
+        }
         if (
           !confirm(
             "Este cambio volverá a buscar los precios para todos los productos. Los precios capturados se reemplazarán por los disponibles para la nueva selección. ¿Continuar?",
@@ -296,6 +313,7 @@ function renderOrder() {
       ) {
         delete order._snapshot;
         reprice();
+        searchProducts();
       }
       showHeaders();
     }
@@ -303,7 +321,7 @@ function renderOrder() {
   document.querySelector("#refreshPrices").onclick = () => {
     if (
       confirm(
-        "¿Reemplazar los precios de esta orden por los del catálogo seleccionado? Los precios no disponibles quedarán pendientes.",
+        "¿Actualizar los precios de esta orden desde el catálogo? Se conservarán las partidas que no tengan una cotización completa disponible.",
       )
     ) {
       reprice();
@@ -337,6 +355,11 @@ function showAddress() {
     : "Selecciona un cliente con domicilio de entrega en su catálogo.";
 }
 function searchProducts() {
+  if (!order.proveedor_id || !order.cliente_id) {
+    document.querySelector("#productResults").innerHTML =
+      '<p class="hint">Selecciona primero el proveedor y el cliente para ver sus productos disponibles.</p>';
+    return;
+  }
   const text = document
     .querySelector("#productSearch")
     .value.toLowerCase()
@@ -345,7 +368,7 @@ function searchProducts() {
     ? catalogs.productos
         .filter(
           (p) =>
-            p.activo &&
+            availableProduct(p, order, catalogs) &&
             [
               p.codigo,
               p.descripcion_compra,
@@ -358,12 +381,16 @@ function searchProducts() {
         )
         .slice(0, 15)
     : [];
-  document.querySelector("#productResults").innerHTML = results
-    .map(
-      (p) =>
-        `<button type="button" data-product="${p.id}"><b>${e(p.codigo)}</b> ${e(p.descripcion_compra)}</button>`,
-    )
-    .join("");
+  document.querySelector("#productResults").innerHTML = results.length
+    ? results
+        .map(
+          (p) =>
+            `<button type="button" data-product="${p.id}"><b>${e(p.codigo)}</b> ${e(p.descripcion_compra)}</button>`,
+        )
+        .join("")
+    : text
+      ? '<p class="hint">No hay coincidencias con precio de compra para este proveedor, precio de venta para este cliente, unidad y peso completos en la fecha de la orden. Puedes completar los datos en Catálogos.</p>'
+      : "";
   document
     .querySelectorAll("[data-product]")
     .forEach((b) => (b.onclick = () => addProduct(b.dataset.product)));
@@ -374,6 +401,13 @@ function addProduct(id) {
     return;
   }
   const p = catalogs.productos.find((x) => x.id === id);
+  if (!availableProduct(p, order, catalogs)) {
+    notify(
+      "Este producto no tiene todos los datos y precios disponibles para la selección actual.",
+    );
+    searchProducts();
+    return;
+  }
   if (p.unidad_compra_id !== p.unidad_venta_id) {
     notify(
       "Este producto tiene unidades de compra y venta distintas. Hace falta definir su conversión antes de usarlo.",
@@ -445,7 +479,13 @@ function showLines() {
   showDocument();
 }
 function showTotals() {
-  const amount=(key)=>order.partidas.some(l=>l[key]===null||l[key]===undefined||l[key]===''||!l.cantidad)?'Incompleto':total(order.partidas,key);
+  const amount = (key) =>
+    order.partidas.some(
+      (l) =>
+        l[key] === null || l[key] === undefined || l[key] === "" || !l.cantidad,
+    )
+      ? "Incompleto"
+      : total(order.partidas, key);
   document.querySelector("#totals").innerHTML =
     `<span>Compra <b>${e(order.moneda_compra)} ${amount("precio_compra")}</b></span><span>Venta <b>${e(order.moneda_venta)} ${amount("precio_venta")}</b></span><span>Peso <b>${amount("peso_unitario_kg")} kg</b></span>`;
 }
@@ -483,6 +523,14 @@ function priceNote(line, key) {
 }
 function reprice() {
   for (const l of order.partidas) {
+    if (
+      !availableProduct(
+        catalogs.productos.find((p) => p.id === l.producto_id),
+        order,
+        catalogs,
+      )
+    )
+      continue;
     for (const key of ["precio_compra", "precio_venta"]) {
       l[key] =
         currentPrice(
