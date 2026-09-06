@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.vercel/
+.env*
+!.env.example
+supabase/.temp/
+private/
+*.xlsx
+*.m4a
+*.pdf
