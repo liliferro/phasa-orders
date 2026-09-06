@@ -295,6 +295,15 @@ dialog {
 dialog::backdrop {
   background: #0d243980;
 }
+.document-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.document-toolbar h2 { margin: 0; }
+#documentExportStatus:empty { display: none; }
 .actions {
   display: flex;
   gap: 10px;
