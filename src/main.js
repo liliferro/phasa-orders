@@ -13,6 +13,12 @@ import {
   priceExplanation,
 } from "./documents.js";
 import "./style.css";
+import {
+  exportRevision,
+  previousExports,
+  downloadPrevious,
+} from "./exports.js";
+import { exportKinds } from "./export-model.js";
 const db = createClient(
   "https://qfwvlhzvgbqmcajdmczj.supabase.co",
   "sb_publishable_j7NC2Zo47BrPQC2SfdGYuA_k3XSqQVX",
@@ -35,6 +41,7 @@ let catalogs = {},
   selectedKind = "purchase_order",
   dirty = false,
   session = null;
+let exporting = false;
 const today = () => new Date().toLocaleDateString("en-CA");
 function notify(s) {
   document.querySelector("#notice").textContent = s;
@@ -247,7 +254,7 @@ function renderOrder() {
       )
       .join(
         "",
-      )}</div><p>Estos campos pertenecen al documento seleccionado. Las cantidades y precios se editan arriba.</p><div class="grid" id="headers"></div><div id="documentPreview"></div></section><section>${field("motivo", "Motivo del cambio (opcional)", order.motivo || "")}<p class="hint">Folios, condiciones comerciales y redondeo se están validando. Esta etapa guarda borradores; la exportación con las plantillas originales se incorporará después de verificar sus formatos.</p></section></form>`,
+      )}</div><p>Estos campos pertenecen al documento seleccionado. Las cantidades y precios se editan arriba.</p><div class="grid" id="headers"></div><div id="documentPreview"></div></section><section>${field("motivo", "Motivo del cambio (opcional)", order.motivo || "")}<p class="hint">Revisa los folios y las condiciones comerciales antes de descargar. Cada cambio guardado conserva la versión anterior.</p></section></form>`,
   );
   const form = document.querySelector("#orderForm");
   form.onchange = (ev) => {
@@ -331,6 +338,25 @@ function renderOrder() {
     }
   };
   document.querySelector("#save").onclick = () => run(saveOrder);
+  document
+    .querySelector("#orderForm")
+    .insertAdjacentHTML(
+      "beforeend",
+      `<section><h2>4. Descargar documentos</h2><p>Los archivos conservan logos, colores y columnas de cada documento. Los cambios se guardan como una nueva versión antes de descargar.</p><div class="actions"><button type="button" data-export="pdf">PDF del documento seleccionado</button><button type="button" data-export="xlsx">Excel del documento seleccionado</button></div><div class="actions"><button type="button" data-export="pdf" data-all="true" class="quiet">PDF de todo el flujo</button><button type="button" data-export="xlsx" data-all="true" class="quiet">Excel de todo el flujo</button><button type="button" data-export="zip" data-all="true" class="quiet">PDF separados (ZIP)</button></div><p class="hint">Documento seleccionado: <strong id="exportKind"></strong>. El flujo incluye Purchase Order, Invoice, Orden de compra y Packing List.</p><p id="exportStatus" role="status" aria-live="polite"></p><button type="button" id="previousExports" class="quiet">Descargas anteriores de esta versión</button><div id="exportHistory"></div></section>`,
+    );
+  document.querySelector("#exportKind").textContent = kinds[selectedKind];
+  document.querySelectorAll("[data-export]").forEach((b) => {
+    b.disabled = exporting;
+    b.onclick = () =>
+      run(() =>
+        downloadOrder(
+          b.dataset.export,
+          b.dataset.all ? exportKinds : [selectedKind],
+        ),
+      );
+  });
+  document.querySelector("#previousExports").onclick = () =>
+    run(showExportHistory);
   document.querySelector("#productSearch").oninput = searchProducts;
   document.querySelectorAll("[data-kind]").forEach(
     (b) =>
@@ -340,6 +366,7 @@ function renderOrder() {
           .querySelectorAll("[data-kind]")
           .forEach((x) => x.classList.toggle("selected", x === b));
         showHeaders();
+        document.querySelector("#exportKind").textContent = kinds[selectedKind];
       }),
   );
   showAddress();
@@ -617,7 +644,7 @@ function showHeaders() {
   showDocument();
 }
 async function saveOrder() {
-  if (!document.querySelector("#orderForm").reportValidity()) return;
+  if (!document.querySelector("#orderForm").reportValidity()) return false;
   if (!order.domicilio_entrega_id)
     throw Error("Completa el domicilio de entrega del cliente.");
   if (!order.partidas.length) throw Error("Agrega al menos un producto.");
@@ -639,9 +666,65 @@ async function saveOrder() {
     await refresh();
     renderOrder();
     notify(`Versión ${result.revision} guardada con sus cuatro documentos.`);
+    return true;
   } finally {
     b.disabled = false;
   }
+}
+async function downloadOrder(format, selected) {
+  if (exporting) return;
+  exporting = true;
+  const setStatus = (text) => {
+    const box = document.querySelector("#exportStatus");
+    if (box) box.textContent = text;
+  };
+  try {
+    document
+      .querySelectorAll("[data-export]")
+      .forEach((b) => (b.disabled = true));
+    if ((dirty || !order.revision_origen_id) && !(await saveOrder())) return;
+    const name = await exportRevision(
+      db,
+      order.revision_origen_id,
+      format,
+      selected,
+      setStatus,
+    );
+    setStatus(`Archivo guardado y descargado: ${name}`);
+    notify(
+      "Descarga lista. El archivo queda disponible en el historial de esta versión.",
+    );
+  } catch (error) {
+    setStatus(error.message || String(error));
+    throw error;
+  } finally {
+    exporting = false;
+    document
+      .querySelectorAll("[data-export]")
+      .forEach((b) => (b.disabled = false));
+  }
+}
+async function showExportHistory() {
+  if (!order.revision_origen_id)
+    throw Error("Guarda la orden para consultar sus descargas.");
+  const rows = await previousExports(db, order.revision_origen_id);
+  const box = document.querySelector("#exportHistory");
+  if (!box) return;
+  box.innerHTML = rows.length
+    ? rows
+        .map(
+          (r, i) =>
+            `<p><button type="button" class="quiet" data-download="${i}">${e(r.nombre_archivo)}</button> · ${e(new Date(r.created_at).toLocaleString("es-MX"))}</p>`,
+        )
+        .join("")
+    : "<p>Todavía no se han generado archivos para esta versión.</p>";
+  box
+    .querySelectorAll("[data-download]")
+    .forEach(
+      (b) =>
+        (b.onclick = () =>
+          run(() => downloadPrevious(db, rows[Number(b.dataset.download)]))),
+    );
 }
 const names = {
   empresas: "Empresas",

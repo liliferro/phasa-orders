@@ -17,6 +17,19 @@ begin
  where e.codigo_interno='FIXTURE-USA' and s.codigo_interno='FIXTURE-SUP' and c.codigo_interno='FIXTURE-CLI' and a.empresa_id=c.id and p.codigo='FIXTURE-PRODUCT';
  first_save:=public.guardar_operacion(payload);
  if (first_save->>'revision')::integer<>1 then raise exception 'Wrong first revision'; end if;
+ if (select plantilla_id is null from public.revisiones_operacion where id=(first_save->>'revision_id')::uuid) then raise exception 'Missing template version'; end if;
+ insert into public.exportaciones(id,revision_operacion_id,formato,documentos,ruta_storage,nombre_archivo)
+ values('33333333-3333-4333-8333-333333333333',(first_save->>'revision_id')::uuid,'pdf',array['invoice'],'33333333-3333-4333-8333-333333333333/test.pdf','test.pdf');
+ insert into storage.objects(bucket_id,name) values('documentos','33333333-3333-4333-8333-333333333333/test.pdf');
+ update public.exportaciones set estado='listo',sha256=repeat('a',64) where id='33333333-3333-4333-8333-333333333333';
+ begin
+ insert into storage.objects(bucket_id,name) values('documentos','unregistered.pdf');
+ raise exception 'Unregistered export file accepted';
+ exception when insufficient_privilege then null; end;
+ begin
+ update public.exportaciones set revision_operacion_id=(first_save->>'revision_id')::uuid;
+ raise exception 'Export revision is mutable';
+ exception when insufficient_privilege then null; end;
  copied:=public.guardar_operacion(payload);
  if copied<>first_save then raise exception 'Idempotency failed'; end if;
  payload:=payload || jsonb_build_object('id',first_save->>'id','revision',1,'clave_guardado',gen_random_uuid(),'partidas',jsonb_set(payload->'partidas','{0,cantidad}','100'));
@@ -40,6 +53,9 @@ set local role authenticated;
 do $test$ begin
  if public.acceso_permitido() then raise exception 'Unauthorized owner accepted'; end if;
  if exists(select 1 from public.purchase_orders) then raise exception 'Unauthorized history read'; end if;
+ if exists(select 1 from public.recursos_plantilla) then raise exception 'Unauthorized template read'; end if;
+ if exists(select 1 from public.exportaciones) then raise exception 'Unauthorized export read'; end if;
+ if exists(select 1 from storage.objects where bucket_id='documentos') then raise exception 'Unauthorized file read'; end if;
  begin
  perform public.guardar_operacion('{}'::jsonb);
  raise exception 'Unauthorized save accepted';

@@ -12,15 +12,15 @@ Aplicación de operaciones de importación. Primera etapa publicada: https://pha
 - Vista automática de las cuatro pestañas con sus propias columnas, partes comerciales, importes y pesos. Referencias de Invoice y folio/fecha/referencia de Packing List derivados de sus documentos origen.
 - Explicación de precios ausentes por empresa, unidad, moneda o vigencia; recarga explícita desde catálogo sin sustituir precios de otro cliente o proveedor.
 - Idempotencia de guardado, detección de ediciones concurrentes y acceso de lectura exclusivo al historial.
+- Descargas individuales PDF/Excel, PDF combinado, Excel con cuatro hojas y ZIP con cuatro PDF. Plantillas originales privadas, logos, colores, columnas, fórmulas y paginación de partidas. Archivos privados asociados a la revisión y su plantilla; descarga de archivos anteriores sin sobrescribirlos.
 
 ## Pendiente antes de entrega completa
 
-- Exportación PDF y XLSX individual y masiva, reproducción y revisión visual de cada plantilla original, almacenamiento privado de archivos y versiones de plantillas.
-- Edición de descripciones de partidas y exportación con reproducción exacta del formato original.
+- Edición de descripciones de partidas.
 - Folios automáticos, valores predeterminados comerciales y redondeo definitivo requieren reglas pendientes del negocio. Las órdenes se guardan como borradores; los importes usan provisionalmente precio de seis decimales y redondeo de cada partida a dos.
 - Recepción, distribución y facturación posterior quedan fuera de esta primera etapa.
 
-Actualmente no hay botones de exportación. Los borradores no son documentos listos para enviar a terceros.
+En la captura, la sección «4. Descargar documentos» permite exportar el documento seleccionado o todo el flujo. Los cambios pendientes se guardan primero; datos y folios incompletos impiden exportar. Al abrir una revisión anterior se exportan sus datos históricos. Las plantillas y fuentes se cargan después de autenticar y nunca se incluyen en el repositorio público. Las columnas se ajustan al ancho de la página para evitar los cortes de los ejemplos originales. Los logos de una empresa no se reutilizan para otros clientes.
 
 ## Desarrollo
 
