@@ -154,6 +154,16 @@ function login() {
         });
         if (error) throw error;
         notify("Revisa tu correo y abre el enlace para entrar.");
+      } catch (error) {
+        const limited =
+          error.status === 429 ||
+          ["over_email_send_rate_limit", "over_request_rate_limit"].includes(error.code) ||
+          /rate limit|too many requests/i.test(error.message || "");
+        notify(
+          limited
+            ? "Se alcanzó el límite temporal de envío de correos. Espera antes de solicitar otro enlace. Si el problema continúa, avisa a la administradora de Phasa Order."
+            : "No pudimos enviar el enlace de acceso. Comprueba tu conexión y tu correo electrónico. Si el problema continúa, avisa a la administradora de Phasa Order.",
+        );
       } finally {
         b.disabled = false;
       }
